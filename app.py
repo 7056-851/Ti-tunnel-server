@@ -25,6 +25,7 @@ def status():
     })
 
 
+
 @app.route("/api/detect", methods=["POST"])
 def detect():
     data = request.get_json(silent=True) or {}
@@ -33,49 +34,37 @@ def detect():
     content = str(data.get("content", ""))
 
     if len(content) > 100000:
-        return jsonify({
-            "error": "Archivo demasiado grande"
-        }), 413
+        return jsonify({"error": "Archivo demasiado grande"}), 413
 
     name = filename.lower()
     text = content.lower()
 
     if "[interface]" in text and "[peer]" in text:
-        file_type = "WireGuard"
-
+        detected = "WireGuard"
     elif "client" in text and (
-        "remote " in text or
-        "dev tun" in text
+        "remote " in text or "dev tun" in text
     ):
-        file_type = "OpenVPN"
-
-    elif name.endswith(".ovpn"):
-        file_type = "OpenVPN"
-
-    elif name.endswith((".conf", ".wg")):
-        file_type = "WireGuard (posible)"
-
+        detected = "OpenVPN"
     elif name.endswith(".ehi"):
-        file_type = "HTTP Injector (posible)"
-
+        detected = "HTTP Injector (posible)"
     elif name.endswith(".hc"):
-        file_type = "HTTP Custom (posible)"
-
-    elif name.endswith((".hat", ".tnl")):
-        file_type = "Tunneling config (posible)"
-
+        detected = "HTTP Custom (posible)"
+    elif name.endswith((".ovpn",)):
+        detected = "OpenVPN (posible)"
+    elif name.endswith((".conf", ".wg")):
+        detected = "WireGuard (posible)"
     elif "ssh" in text or "payload" in text:
-        file_type = "SSH/Tunnel (posible)"
-
+        detected = "SSH/Tunnel (posible)"
     else:
-        file_type = "Formato desconocido"
+        detected = "Formato desconocido"
 
     return jsonify({
         "app": "Mi Tunnel",
-        "detected": file_type,
         "filename": filename,
+        "detected": detected,
         "status": "success"
     })
+
 
 
 if __name__ == "__main__":
