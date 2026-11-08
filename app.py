@@ -1,10 +1,13 @@
 
+import json
+import base64
+from urllib.parse import urlparse
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 app = Flask(__name__)
 
-# Permitir peticiones desde Flutter Web / DartPad
 CORS(app, resources={
     r"/api/*": {
         "origins": "*",
@@ -14,7 +17,6 @@ CORS(app, resources={
 })
 
 
-# Comprobar servidor
 @app.route("/api/status", methods=["GET"])
 def status():
     return jsonify({
@@ -23,15 +25,24 @@ def status():
     })
 
 
-# Analizador de configuraciones
-@app.route("/api/analyze", methods=["POST", "OPTIONS"])
-@app.route("/api/detect", methods=["POST", "OPTIONS"])
-def analyze():
+def decode_vmess(content):
+    """Decodifica el JSON de un enlace vmess://."""
+    encoded = content[8:].strip()
 
+    # Soportar enlaces con datos Base64
+    padding = "=" * (-len(encoded) % 4)
+    decoded = base64.urlsafe_b64decode(
+        encoded + padding
+    ).decode("utf-8")
+
+    return json.loads(decoded)
+
+
+def analyze_config():
     data = request.get_json(silent=True) or {}
 
     filename = str(data.get("filename", ""))
-    content = str(data.get("content", ""))
+    content = str(data.get("content", "")).strip()
 
     if len(content) > 100000:
         return jsonify({
@@ -39,49 +50,48 @@ def analyze():
             "message": "Archivo demasiado grande"
         }), 413
 
+    if not content:
+        return jsonify({
+            "status": "error",
+            "message": "Configuración vacía"
+        }), 400
+
     text = content.lower()
     lines = content.splitlines()
 
-    # Detectar WireGuard
-    if "[interface]" in text and "[peer]" in text:
+    file_type = None
+    details = {}
 
+    # WireGuard
+    if "[interface]" in text and "[peer]" in text:
         file_type = "WireGuard"
 
-        peers = sum(
-            1 for line in lines
-            if line.strip().lower() == "[peer]"
-        )
-
-        dns = any(
-            line.strip().lower().startswith("dns")
-            for line in lines
-        )
-
-        address = any(
-            line.strip().lower().startswith("address")
-            for line in lines
-        )
-
         details = {
-            "peers": peers,
-            "dns_configured": dns,
-            "address_configured": address
+            "peers": sum(
+                1 for line in lines
+                if line.strip().lower() == "[peer]"
+            ),
+            "dns_configured": any(
+                line.strip().lower().startswith("dns")
+                for line in lines
+            ),
+            "address_configured": any(
+                line.strip().lower().startswith("address")
+                for line in lines
+            )
         }
 
-    # Detectar OpenVPN
+    # OpenVPN
     elif "client" in text and (
         "remote " in text or "dev tun" in text
     ):
-
         file_type = "OpenVPN"
 
-        remotes = sum(
-            1 for line in lines
-            if line.strip().lower().startswith("remote ")
-        )
-
         details = {
-            "remote_servers": remotes,
+            "remote_servers": sum(
+                1 for line in lines
+                if line.strip().lower().startswith("remote ")
+            ),
             "protocol_configured": any(
                 line.strip().lower().startswith("proto ")
                 for line in lines
@@ -92,7 +102,69 @@ def analyze():
             )
         }
 
-    else:
+    # VMess
+    elif content.lower().startswith("vmess://"):
+        try:
+            vmess = decode_vmess(content)
+
+            file_type = "VMess"
+            details = {
+                "protocol": "VMess",
+                "server_configured": bool(vmess.get("add")),
+                "port_configured": bool(vmess.get("port")),
+                "uuid_configured": bool(vmess.get("id")),
+                "transport": vmess.get("net", "tcp")
+            }
+        except Exception:
+            return jsonify({
+                "app": "Mi Tunnel",
+                "status": "error",
+                "message": "Enlace VMess inválido o no se pudo decodificar"
+            }), 400
+
+    # VLESS
+    elif content.lower().startswith("vless://"):
+        try:
+            parsed = urlparse(content)
+
+            file_type = "VLESS"
+            details = {
+                "protocol": "VLESS",
+                "server_configured": bool(parsed.hostname),
+                "port_configured": bool(parsed.port),
+                "uuid_configured": bool(parsed.username),
+                "transport": dict(
+                    item.split("=", 1)
+                    for item in parsed.query.split("&")
+                    if "=" in item
+                ).get("type", "tcp")
+            }
+        except Exception:
+            return jsonify({
+                "app": "Mi Tunnel",
+                "status": "error",
+                "message": "Enlace VLESS inválido"
+            }), 400
+
+    # JSON de V2Ray / Xray
+    elif content.startswith("{"):
+        try:
+            config = json.loads(content)
+
+            if isinstance(config, dict) and (
+                "inbounds" in config or "outbounds" in config
+            ):
+                file_type = "V2Ray / Xray JSON"
+
+                details = {
+                    "inbounds": len(config.get("inbounds", [])),
+                    "outbounds": len(config.get("outbounds", [])),
+                    "valid_json": True
+                }
+        except json.JSONDecodeError:
+            pass
+
+    if not file_type:
         return jsonify({
             "app": "Mi Tunnel",
             "status": "unsupported",
@@ -107,6 +179,12 @@ def analyze():
         "details": details,
         "status": "success"
     })
+
+
+@app.route("/api/analyze", methods=["POST", "OPTIONS"])
+@app.route("/api/detect", methods=["POST", "OPTIONS"])
+def analyze():
+    return analyze_config()
 
 
 if __name__ == "__main__":
