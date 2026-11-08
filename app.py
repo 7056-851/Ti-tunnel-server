@@ -26,44 +26,84 @@ def status():
 
 
 
-@app.route("/api/detect", methods=["POST"])
-def detect():
+@app.route("/api/detect",
+@app.route("/api/analyze", methods=["POST"])
+def analyze():
     data = request.get_json(silent=True) or {}
 
     filename = str(data.get("filename", ""))
     content = str(data.get("content", ""))
 
     if len(content) > 100000:
-        return jsonify({"error": "Archivo demasiado grande"}), 413
+        return jsonify({
+            "status": "error",
+            "message": "Archivo demasiado grande"
+        }), 413
 
-    name = filename.lower()
     text = content.lower()
+    lines = content.splitlines()
 
     if "[interface]" in text and "[peer]" in text:
-        detected = "WireGuard"
+        file_type = "WireGuard"
+
+        peers = sum(
+            1 for line in lines
+            if line.strip().lower() == "[peer]"
+        )
+
+        dns = any(
+            line.strip().lower().startswith("dns")
+            for line in lines
+        )
+
+        address = any(
+            line.strip().lower().startswith("address")
+            for line in lines
+        )
+
+        details = {
+            "peers": peers,
+            "dns_configured": dns,
+            "address_configured": address
+        }
+
     elif "client" in text and (
         "remote " in text or "dev tun" in text
     ):
-        detected = "OpenVPN"
-    elif name.endswith(".ehi"):
-        detected = "HTTP Injector (posible)"
-    elif name.endswith(".hc"):
-        detected = "HTTP Custom (posible)"
-    elif name.endswith((".ovpn",)):
-        detected = "OpenVPN (posible)"
-    elif name.endswith((".conf", ".wg")):
-        detected = "WireGuard (posible)"
-    elif "ssh" in text or "payload" in text:
-        detected = "SSH/Tunnel (posible)"
+        file_type = "OpenVPN"
+
+        remotes = sum(
+            1 for line in lines
+            if line.strip().lower().startswith("remote ")
+        )
+
+        details = {
+            "remote_servers": remotes,
+            "protocol_configured": any(
+                line.strip().lower().startswith("proto ")
+                for line in lines
+            ),
+            "device_configured": any(
+                line.strip().lower().startswith("dev ")
+                for line in lines
+            )
+        }
+
     else:
-        detected = "Formato desconocido"
+        return jsonify({
+            "status": "unsupported",
+            "filename": filename,
+            "message": "Formato no compatible o no reconocido"
+        }), 200
 
     return jsonify({
         "app": "Mi Tunnel",
         "filename": filename,
-        "detected": detected,
+        "detected": file_type,
+        "details": details,
         "status": "success"
     })
+
 
 
 
