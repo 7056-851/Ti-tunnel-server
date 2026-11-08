@@ -4,16 +4,18 @@ from flask_cors import CORS
 
 app = Flask(__name__)
 
+# Permitir peticiones desde Flutter Web / DartPad
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*"
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
     }
 })
 
 
-
-
-@app.route("/api/status")
+# Comprobar servidor
+@app.route("/api/status", methods=["GET"])
 def status():
     return jsonify({
         "server": "Mi Tunnel",
@@ -21,9 +23,11 @@ def status():
     })
 
 
-
-@app.route("/api/analyze", methods=["POST"])
+# Analizador de configuraciones
+@app.route("/api/analyze", methods=["POST", "OPTIONS"])
+@app.route("/api/detect", methods=["POST", "OPTIONS"])
 def analyze():
+
     data = request.get_json(silent=True) or {}
 
     filename = str(data.get("filename", ""))
@@ -38,7 +42,9 @@ def analyze():
     text = content.lower()
     lines = content.splitlines()
 
+    # Detectar WireGuard
     if "[interface]" in text and "[peer]" in text:
+
         file_type = "WireGuard"
 
         peers = sum(
@@ -62,9 +68,11 @@ def analyze():
             "address_configured": address
         }
 
+    # Detectar OpenVPN
     elif "client" in text and (
         "remote " in text or "dev tun" in text
     ):
+
         file_type = "OpenVPN"
 
         remotes = sum(
@@ -86,6 +94,7 @@ def analyze():
 
     else:
         return jsonify({
+            "app": "Mi Tunnel",
             "status": "unsupported",
             "filename": filename,
             "message": "Formato no compatible o no reconocido"
@@ -100,9 +109,12 @@ def analyze():
     })
 
 
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(
+        host="0.0.0.0",
+        port=10000,
+        debug=False
+    )
+
 
 
