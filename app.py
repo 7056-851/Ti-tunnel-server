@@ -26,7 +26,6 @@ def status():
 
 
 
-@app.route("/api/detect",
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     data = request.get_json(silent=True) or {}
