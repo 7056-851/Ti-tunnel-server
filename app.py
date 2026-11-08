@@ -3,13 +3,18 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
-    return jsonify({
-        "app": "Mi Tunnel",
-        "status": "online",
-        "message": "Servidor funcionando correctamente"
-    })
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+app = Flask(__name__)
+
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*"
+    }
+})
+
 
 
 @app.route("/api/status")
