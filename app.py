@@ -12,7 +12,8 @@ CORS(app, resources={
     r"/api/*": {
         "origins": "*",
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+        "allow_headers": "*",
+        "max_age": 86400
     }
 })
 
@@ -39,6 +40,10 @@ def decode_vmess(content):
 
 
 def analyze_config():
+
+    if request.method == "OPTIONS":
+        return "", 204
+
     data = request.get_json(silent=True) or {}
 
     filename = str(data.get("filename", ""))
