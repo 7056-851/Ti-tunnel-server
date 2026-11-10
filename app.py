@@ -39,6 +39,7 @@ def decode_vmess(content):
     return json.loads(decoded)
 
 
+
 def analyze_config():
 
     if request.method == "OPTIONS":
@@ -63,6 +64,8 @@ def analyze_config():
 
     text = content.lower()
     lines = content.splitlines()
+    lower_lines = [line.strip().lower() for line in lines]
+    extension = filename.lower().split(".")[-1] if "." in filename else ""
 
     file_type = None
     details = {}
@@ -73,16 +76,16 @@ def analyze_config():
 
         details = {
             "peers": sum(
-                1 for line in lines
-                if line.strip().lower() == "[peer]"
+                1 for line in lower_lines
+                if line == "[peer]"
             ),
             "dns_configured": any(
-                line.strip().lower().startswith("dns")
-                for line in lines
+                line.startswith("dns")
+                for line in lower_lines
             ),
             "address_configured": any(
-                line.strip().lower().startswith("address")
-                for line in lines
+                line.startswith("address")
+                for line in lower_lines
             )
         }
 
@@ -94,17 +97,78 @@ def analyze_config():
 
         details = {
             "remote_servers": sum(
-                1 for line in lines
-                if line.strip().lower().startswith("remote ")
+                1 for line in lower_lines
+                if line.startswith("remote ")
             ),
             "protocol_configured": any(
-                line.strip().lower().startswith("proto ")
-                for line in lines
+                line.startswith("proto ")
+                for line in lower_lines
             ),
             "device_configured": any(
-                line.strip().lower().startswith("dev ")
-                for line in lines
+                line.startswith("dev ")
+                for line in lower_lines
             )
+        }
+
+    # SSH + Payload
+    elif (
+        any(
+            line.startswith(("ssh:", "ssh=", "ssh server:"))
+            for line in lower_lines
+        )
+        and any(
+            line.startswith(("port:", "port=", "ssh port:"))
+            for line in lower_lines
+        )
+    ):
+
+        file_type = "SSH + Payload"
+
+        details = {
+            "server_configured": True,
+            "port_configured": True,
+            "username_configured": any(
+                line.startswith(("user:", "username:", "user="))
+                for line in lower_lines
+            ),
+            "password_configured": any(
+                line.startswith(("password:", "pass:", "password="))
+                for line in lower_lines
+            ),
+            "payload_configured": any(
+                "payload:" in line or "payload=" in line
+                for line in lower_lines
+            )
+        }
+
+    # HTTP Custom / HTTP Injector - exportaciones de texto
+    elif (
+        any(
+            "payload:" in line or "payload=" in line
+            for line in lower_lines
+        )
+        and any(
+            line.startswith(("host:", "server:", "proxy:"))
+            for line in lower_lines
+        )
+        and any(
+            line.startswith(("port:", "proxy port:"))
+            for line in lower_lines
+        )
+    ):
+
+        if extension == "hc":
+            file_type = "HTTP Custom (texto)"
+        elif extension == "ehi":
+            file_type = "HTTP Injector (texto)"
+        else:
+            file_type = "SSH + Payload"
+
+        details = {
+            "server_configured": True,
+            "port_configured": True,
+            "payload_configured": True,
+            "format": "text"
         }
 
     # VMess
@@ -113,6 +177,7 @@ def analyze_config():
             vmess = decode_vmess(content)
 
             file_type = "VMess"
+
             details = {
                 "protocol": "VMess",
                 "server_configured": bool(vmess.get("add")),
@@ -120,6 +185,7 @@ def analyze_config():
                 "uuid_configured": bool(vmess.get("id")),
                 "transport": vmess.get("net", "tcp")
             }
+
         except Exception:
             return jsonify({
                 "app": "Mi Tunnel",
@@ -132,18 +198,23 @@ def analyze_config():
         try:
             parsed = urlparse(content)
 
+            query = {}
+
+            for item in parsed.query.split("&"):
+                if "=" in item:
+                    key, value = item.split("=", 1)
+                    query[key] = value
+
             file_type = "VLESS"
+
             details = {
                 "protocol": "VLESS",
                 "server_configured": bool(parsed.hostname),
                 "port_configured": bool(parsed.port),
                 "uuid_configured": bool(parsed.username),
-                "transport": dict(
-                    item.split("=", 1)
-                    for item in parsed.query.split("&")
-                    if "=" in item
-                ).get("type", "tcp")
+                "transport": query.get("type", "tcp")
             }
+
         except Exception:
             return jsonify({
                 "app": "Mi Tunnel",
@@ -151,7 +222,7 @@ def analyze_config():
                 "message": "Enlace VLESS inválido"
             }), 400
 
-    # JSON de V2Ray / Xray
+    # JSON V2Ray / Xray
     elif content.startswith("{"):
         try:
             config = json.loads(content)
@@ -159,6 +230,7 @@ def analyze_config():
             if isinstance(config, dict) and (
                 "inbounds" in config or "outbounds" in config
             ):
+
                 file_type = "V2Ray / Xray JSON"
 
                 details = {
@@ -166,9 +238,11 @@ def analyze_config():
                     "outbounds": len(config.get("outbounds", [])),
                     "valid_json": True
                 }
+
         except json.JSONDecodeError:
             pass
 
+    # Formato no reconocido
     if not file_type:
         return jsonify({
             "app": "Mi Tunnel",
