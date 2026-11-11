@@ -71,7 +71,7 @@ def analyze_config():
     details = {}
 
 
-    # WireGuard
+ # WireGuard
     if "[interface]" in text and "[peer]" in text:
         file_type = "WireGuard"
 
@@ -91,6 +91,7 @@ def analyze_config():
         }
 
     # OpenVPN
+
 
     elif "client" in text and (
         "remote " in text or "dev tun" in text
