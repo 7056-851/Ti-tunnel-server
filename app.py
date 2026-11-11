@@ -70,26 +70,28 @@ def analyze_config():
     file_type = None
     details = {}
 
+
     # WireGuard
     if "[interface]" in text and "[peer]" in text:
         file_type = "WireGuard"
 
         details = {
             "peers": sum(
-                1 for line in lower_lines
-                if line == "[peer]"
+                1 for line in lines
+                if line.strip().lower() == "[peer]"
             ),
             "dns_configured": any(
-                line.startswith("dns")
-                for line in lower_lines
+                line.strip().lower().startswith("dns")
+                for line in lines
             ),
             "address_configured": any(
-                line.startswith("address")
-                for line in lower_lines
+                line.strip().lower().startswith("address")
+                for line in lines
             )
         }
 
     # OpenVPN
+
     elif "client" in text and (
         "remote " in text or "dev tun" in text
     ):
