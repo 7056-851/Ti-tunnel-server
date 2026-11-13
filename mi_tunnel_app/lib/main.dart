@@ -19,10 +19,7 @@ class MiTunnelApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF08111F),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF168BFF),
-          brightness: Brightness.dark,
-        ),
+        colorSchemeSeed: Colors.blue,
         useMaterial3: true,
       ),
       home: const TunnelHomePage(),
@@ -38,11 +35,15 @@ class TunnelHomePage extends StatefulWidget {
 }
 
 class _TunnelHomePageState extends State<TunnelHomePage> {
-  final TextEditingController configController =
-      TextEditingController();
-
   final String serverUrl =
       'https://ti-tunnel-server.onrender.com';
+
+  final hostController = TextEditingController();
+  final portController = TextEditingController(text: '22');
+  final usernameController = TextEditingController();
+  final passwordController = TextEditingController();
+  final payloadController = TextEditingController();
+  final configController = TextEditingController();
 
   final List<String> protocols = [
     'SSH',
@@ -55,16 +56,52 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
 
   String selectedProtocol = 'SSH';
   String result = 'Esperando configuración...';
+
   bool analyzing = false;
+  bool hidePassword = true;
 
   Future<void> analyzeConfig() async {
-    final content = configController.text.trim();
+    String content;
 
-    if (content.isEmpty) {
-      setState(() {
-        result = 'Pega una configuración antes de analizar.';
-      });
-      return;
+    if (selectedProtocol == 'SSH') {
+      final host = hostController.text.trim();
+      final port = portController.text.trim();
+      final username = usernameController.text.trim();
+
+      if (host.isEmpty || port.isEmpty || username.isEmpty) {
+        setState(() {
+          result = 'Completa el servidor, puerto y usuario.';
+        });
+        return;
+      }
+
+      final parsedPort = int.tryParse(port);
+
+      if (parsedPort == null ||
+          parsedPort < 1 ||
+          parsedPort > 65535) {
+        setState(() {
+          result = 'El puerto debe ser un número entre 1 y 65535.';
+        });
+        return;
+      }
+
+      content = '''
+Host: $host
+Port: $port
+Username: $username
+Password: ${passwordController.text.isNotEmpty ? 'configured' : ''}
+Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
+''';
+    } else {
+      content = configController.text.trim();
+
+      if (content.isEmpty) {
+        setState(() {
+          result = 'Pega una configuración antes de analizar.';
+        });
+        return;
+      }
     }
 
     setState(() {
@@ -78,36 +115,44 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
       final uri = Uri.parse('$serverUrl/api/detect');
       final request = await client.postUrl(uri);
 
-      request.headers.contentType =
-          ContentType.json;
+      request.headers.contentType = ContentType.json;
 
       request.write(jsonEncode({
         'filename': '$selectedProtocol.txt',
         'content': content,
       }));
 
-      final response =
-          await request.close().timeout(
-                const Duration(seconds: 60),
-              );
+      final response = await request.close().timeout(
+        const Duration(seconds: 60),
+      );
 
       final responseText =
           await response.transform(utf8.decoder).join();
 
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        throw Exception('Error HTTP ${response.statusCode}');
+      }
+
       final decoded = jsonDecode(responseText);
+
+      if (!mounted) return;
 
       setState(() {
         result = const JsonEncoder.withIndent('  ')
             .convert(decoded);
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         result = 'No se pudo analizar la configuración.\n\n'
-            'Comprueba tu conexión a Internet y que el servidor '
-            'Render esté activo.\n\nDetalle: $e';
+            'Comprueba tu conexión a Internet y el servidor Render.\n\n'
+            'Detalle: $e';
       });
     } finally {
       client.close();
+
       if (mounted) {
         setState(() {
           analyzing = false;
@@ -116,8 +161,41 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
     }
   }
 
+  Widget buildField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    TextInputType keyboardType = TextInputType.text,
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        obscureText: obscure,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          suffixIcon: suffix,
+          filled: true,
+          fillColor: const Color(0xFF142238),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(13),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    hostController.dispose();
+    portController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+    payloadController.dispose();
     configController.dispose();
     super.dispose();
   }
@@ -169,14 +247,14 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
                   ),
                   SizedBox(height: 6),
                   Text(
-                    'Selecciona un protocolo y analiza '
-                    'tu configuración.',
+                    'Configura tu protocolo y analiza los datos.',
                     style: TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 22),
+
             const Text(
               'PROTOCOLO',
               style: TextStyle(
@@ -185,6 +263,7 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
               ),
             ),
             const SizedBox(height: 10),
+
             DropdownButtonFormField<String>(
               value: selectedProtocol,
               decoration: InputDecoration(
@@ -204,38 +283,98 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
                 if (value != null) {
                   setState(() {
                     selectedProtocol = value;
+                    result = 'Esperando configuración...';
                   });
                 }
               },
             ),
+
             const SizedBox(height: 22),
-            const Text(
-              'CONFIGURACIÓN',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.lightBlueAccent,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: configController,
-              minLines: 7,
-              maxLines: 12,
-              decoration: InputDecoration(
-                hintText: 'Pega aquí tu configuración...',
-                filled: true,
-                fillColor: const Color(0xFF142238),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+
+            if (selectedProtocol == 'SSH') ...[
+              const Text(
+                'CONFIGURACIÓN SSH',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.lightBlueAccent,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              buildField(
+                label: 'Host / Servidor',
+                hint: 'ejemplo.com',
+                controller: hostController,
+              ),
+
+              buildField(
+                label: 'Puerto',
+                hint: '22',
+                controller: portController,
+                keyboardType: TextInputType.number,
+              ),
+
+              buildField(
+                label: 'Usuario',
+                hint: 'Tu usuario SSH',
+                controller: usernameController,
+              ),
+
+              buildField(
+                label: 'Contraseña',
+                hint: 'Tu contraseña SSH',
+                controller: passwordController,
+                obscure: hidePassword,
+                suffix: IconButton(
+                  icon: Icon(
+                    hidePassword
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      hidePassword = !hidePassword;
+                    });
+                  },
+                ),
+              ),
+
+              buildField(
+                label: 'Payload (opcional)',
+                hint: 'Introduce tu payload',
+                controller: payloadController,
+              ),
+            ] else ...[
+              const Text(
+                'CONFIGURACIÓN',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.lightBlueAccent,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              TextField(
+                controller: configController,
+                minLines: 7,
+                maxLines: 12,
+                decoration: InputDecoration(
+                  hintText: 'Pega aquí tu configuración...',
+                  filled: true,
+                  fillColor: const Color(0xFF142238),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 10),
+
             SizedBox(
               height: 52,
               child: FilledButton.icon(
-                onPressed:
-                    analyzing ? null : analyzeConfig,
+                onPressed: analyzing ? null : analyzeConfig,
                 icon: analyzing
                     ? const SizedBox(
                         width: 19,
@@ -252,15 +391,15 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
                 ),
               ),
             ),
+
             const SizedBox(height: 22),
+
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: const Color(0xFF142238),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white12,
-                ),
+                border: Border.all(color: Colors.white12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,7 +430,9 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
                 ],
               ),
             ),
+
             const SizedBox(height: 18),
+
             const Center(
               child: Text(
                 'Mi Tunnel • Motor VPN en desarrollo',
