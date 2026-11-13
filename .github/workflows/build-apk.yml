@@ -29,7 +29,10 @@ jobs:
       - name: Preparar proyecto Android
         working-directory: mi_tunnel_app
         run: flutter create --platforms=android --project-name mi_tunnel .
-
+      - name: Permitir acceso a Internet
+        working-directory: mi_tunnel_app
+        run: |
+          sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
       - name: Descargar dependencias
         working-directory: mi_tunnel_app
         run: flutter pub get
@@ -44,4 +47,5 @@ jobs:
           name: Mi-Tunnel-APK
           path: mi_tunnel_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
+
 
