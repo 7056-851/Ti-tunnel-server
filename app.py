@@ -35,7 +35,6 @@ def decode_vmess(content):
     decoded = base64.urlsafe_b64decode(
         encoded + padding
     ).decode("utf-8")
-
     return json.loads(decoded)
 
 
@@ -44,11 +43,41 @@ def analyze_config():
 
     if request.method == "OPTIONS":
         return "", 204
-
     data = request.get_json(silent=True) or {}
 
-    filename = str(data.get("filename", ""))
-    content = str(data.get("content", "")).strip()
+    if not isinstance(data, dict):
+        return jsonify({
+            "app": "Mi Tunnel",
+            "status": "error",
+            "message": "Se esperaba un objeto JSON"
+        }), 400
+
+    filename = str(data.get("filename", "Configuración manual"))
+    content = str(data.get("content", "") or "").strip()
+    manual = data.get("config", {})
+    if not isinstance(manual, dict):
+        manual = {}
+
+    if not content:
+        fields = [
+            "host", "server", "port", "username",
+            "user", "password", "payload", "sni",
+            "proxy", "proxy_host", "proxy_port",
+            "ssl", "tls", "protocol"
+        ]
+
+        values = dict(manual)
+        values.update({
+            key: data[key]
+            for key in fields
+            if key in data
+        })
+
+        content = "\n".join(
+            f"{key}: {value}"
+            for key, value in values.items()
+            if str(value or "").strip()
+        )
 
     if len(content) > 100000:
         return jsonify({
@@ -113,35 +142,54 @@ def analyze_config():
             )
         }
 
-    # SSH + Payload
+    # SSH + Payload / SSH manual
     elif (
         any(
-            line.startswith(("ssh:", "ssh=", "ssh server:"))
+            line.startswith((
+                "ssh:", "ssh=", "ssh server:", "ssh server=",
+                "ssh host:", "ssh host=", "host:", "host=",
+                "server:", "server=", "hostname:", "hostname="
+            ))
             for line in lower_lines
         )
         and any(
-            line.startswith(("port:", "port=", "ssh port:"))
+            line.startswith((
+                "port:", "port=", "ssh port:", "ssh port="
+            ))
             for line in lower_lines
         )
     ):
+        has_user = any(
+            line.startswith((
+                "user:", "username:", "user=", "username="
+            ))
+            for line in lower_lines
+        )
 
-        file_type = "SSH + Payload"
+        has_pass = any(
+            line.startswith((
+                "password:", "pass:", "password=", "pass="
+            ))
+            for line in lower_lines
+        )
+
+        has_payload = any(
+            line.startswith((
+                "payload:", "payload=", "http payload:", "http payload="
+            ))
+            or "connect [host_port]" in line
+            or "http/1.1" in line
+            for line in lower_lines
+        )
+
+        file_type = "SSH + Payload" if has_payload else "SSH"
 
         details = {
             "server_configured": True,
             "port_configured": True,
-            "username_configured": any(
-                line.startswith(("user:", "username:", "user="))
-                for line in lower_lines
-            ),
-            "password_configured": any(
-                line.startswith(("password:", "pass:", "password="))
-                for line in lower_lines
-            ),
-            "payload_configured": any(
-                "payload:" in line or "payload=" in line
-                for line in lower_lines
-            )
+            "username_configured": has_user,
+            "password_configured": has_pass,
+            "payload_configured": has_payload
         }
 
     # HTTP Custom / HTTP Injector - exportaciones de texto
