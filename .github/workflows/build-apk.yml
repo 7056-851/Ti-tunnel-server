@@ -1,0 +1,47 @@
+
+name: Construir APK Mi Tunnel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Instalar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Preparar proyecto Android
+        working-directory: mi_tunnel_app
+        run: flutter create --platforms=android --project-name mi_tunnel .
+
+      - name: Descargar dependencias
+        working-directory: mi_tunnel_app
+        run: flutter pub get
+
+      - name: Compilar APK
+        working-directory: mi_tunnel_app
+        run: flutter build apk --release
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mi-Tunnel-APK
+          path: mi_tunnel_app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
+
