@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:dartssh2/dartssh2.dart';
 
 void main() {
   runApp(const MiTunnelApp());
@@ -59,6 +60,118 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
 
   bool analyzing = false;
   bool hidePassword = true;
+  bool connectingSsh = false;
+  SSHClient? sshClient;
+
+
+  Future<void> connectSsh() async {
+    final host = hostController.text.trim();
+    final port = int.tryParse(portController.text.trim());
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+
+    if (host.isEmpty || username.isEmpty || password.isEmpty ||
+        port == null || port < 1 || port > 65535) {
+      setState(() {
+        result = 'Completa servidor, puerto, usuario y contraseña.';
+      });
+      return;
+    }
+
+    setState(() {
+      connectingSsh = true;
+      result = 'Conectando al servidor SSH...';
+    });
+
+    SSHClient? candidate;
+
+    try {
+      final socket = await SSHSocket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 15),
+      );
+
+      final newClient = SSHClient(
+        socket,
+        username: username,
+        onPasswordRequest: () => password,
+        handshakeTimeout: const Duration(seconds: 15),
+        authTimeout: const Duration(seconds: 20),
+        onVerifyHostKey: (type, fingerprint) async {
+          final fingerprintText = utf8.decode(fingerprint);
+
+          if (!mounted) return false;
+
+          final accepted = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Verificar servidor SSH'),
+              content: SelectableText(
+                'Tipo de clave: $type\n\n'
+                'Huella SHA256:\n$fingerprintText\n\n'
+                'Compara esta huella con la proporcionada '
+                'por tu proveedor mediante un canal confiable. '
+                'Si no puedes verificarla, rechaza la conexión.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, false),
+                  child: const Text('Rechazar'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, true),
+                  child: const Text('Huella verificada'),
+                ),
+              ],
+            ),
+          );
+
+          return accepted ?? false;
+        },
+      );
+
+      candidate = newClient;
+
+      await newClient.authenticated.timeout(
+        const Duration(seconds: 25),
+      );
+
+      if (!mounted) {
+        await newClient.close();
+        return;
+      }
+
+      await sshClient?.close();
+
+      setState(() {
+        sshClient = newClient;
+        result = '¡Conexión SSH autenticada correctamente!\n'
+            'Servidor: $host\n'
+            'Puerto: $port\n'
+            'Usuario: $username\n'
+            'Estado: conectado';
+      });
+    } catch (e) {
+      await candidate?.close();
+
+      if (!mounted) return;
+
+      setState(() {
+        result = 'No se pudo establecer la conexión SSH.\n\n'
+            'Detalle: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          connectingSsh = false;
+        });
+      }
+    }
+  }
 
   Future<void> analyzeConfig() async {
     String content;
@@ -191,6 +304,8 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
 
   @override
   void dispose() {
+    sshClient?.close();
+    sshClient = null;
     hostController.dispose();
     portController.dispose();
     usernameController.dispose();
@@ -391,6 +506,30 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
                 ),
               ),
             ),
+
+            if (selectedProtocol == 'SSH') ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: connectingSsh ? null : connectSsh,
+                  icon: connectingSsh
+                      ? const SizedBox(
+                          width: 19,
+                          height: 19,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.vpn_key),
+                  label: Text(
+                    connectingSsh
+                        ? 'Conectando SSH...'
+                        : 'Conectar SSH',
+                  ),
+                ),
+              ),
+            ],
 
             const SizedBox(height: 22),
 
