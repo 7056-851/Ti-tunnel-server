@@ -63,6 +63,24 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
   bool connectingSsh = false;
   SSHClient? sshClient;
 
+  // Opciones de conexión de Mi Tunnel
+  final sniController = TextEditingController();
+  final hostHeaderController = TextEditingController();
+  final serverNameController = TextEditingController();
+
+  String selectedMode = 'Custom SNI';
+  int selectedTabIndex = 0;
+  bool customSetup = true;
+
+  final List<String> connectionModes = [
+    'Direct Connection',
+    'Custom Payload',
+    'Custom Host Header',
+    'Custom SNI',
+    'DNSTT Tunnel',
+    'Imported Config',
+  ];
+
 
   Future<void> connectSsh() async {
     final host = hostController.text.trim();
@@ -312,11 +330,80 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
     passwordController.dispose();
     payloadController.dispose();
     configController.dispose();
+    sniController.dispose();
+    hostHeaderController.dispose();
+    serverNameController.dispose();
     super.dispose();
   }
 
+
   @override
   Widget build(BuildContext context) {
+    const blue = Color(0xFF38BDF8);
+    const panel = Color(0xFF142238);
+
+    Widget modeTile(String mode, IconData icon) {
+      final selected = selectedMode == mode;
+
+      return InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          setState(() {
+            selectedMode = mode;
+          });
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 9),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 13,
+            vertical: 15,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF123D70) : panel,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? blue : Colors.white12,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: selected ? blue : Colors.white70),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  mode,
+                  style: TextStyle(
+                    fontWeight:
+                        selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_off,
+                color: selected ? blue : Colors.white38,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget sectionTitle(String value) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10, top: 18),
+        child: Text(
+          value,
+          style: const TextStyle(
+            color: blue,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF101E32),
@@ -331,97 +418,80 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
           children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF123D70),
-                    Color(0xFF10243D),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() => selectedTabIndex = 0);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: selectedTabIndex == 0
+                          ? const Color(0xFF123D70)
+                          : panel,
+                    ),
+                    child: const Text('HOME'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      setState(() => selectedTabIndex = 1);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: selectedTabIndex == 1
+                          ? const Color(0xFF123D70)
+                          : panel,
+                    ),
+                    child: const Text('LOG'),
+                  ),
+                ),
+              ],
+            ),
+
+            if (selectedTabIndex == 0) ...[
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(17),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF123D70),
+                      Color(0xFF10243D),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.shield_rounded, size: 38, color: blue),
+                    SizedBox(height: 10),
+                    Text(
+                      'Tu conexión segura',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Configura tu modo de conexión.',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(18),
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.shield_rounded,
-                    size: 42,
-                    color: Colors.lightBlueAccent,
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'Tu conexión segura',
-                    style: TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Configura tu protocolo y analiza los datos.',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
 
-            const Text(
-              'PROTOCOLO',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.lightBlueAccent,
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            DropdownButtonFormField<String>(
-              value: selectedProtocol,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: const Color(0xFF142238),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              items: protocols.map((protocol) {
-                return DropdownMenuItem(
-                  value: protocol,
-                  child: Text(protocol),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    selectedProtocol = value;
-                    result = 'Esperando configuración...';
-                  });
-                }
-              },
-            ),
-
-            const SizedBox(height: 22),
-
-            if (selectedProtocol == 'SSH') ...[
-              const Text(
-                'CONFIGURACIÓN SSH',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.lightBlueAccent,
-                ),
-              ),
-              const SizedBox(height: 14),
-
+              sectionTitle('SERVIDOR'),
               buildField(
                 label: 'Host / Servidor',
                 hint: 'ejemplo.com',
                 controller: hostController,
               ),
-
               buildField(
                 label: 'Puerto',
                 hint: '22',
@@ -429,149 +499,268 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
                 keyboardType: TextInputType.number,
               ),
 
-              buildField(
-                label: 'Usuario',
-                hint: 'Tu usuario SSH',
-                controller: usernameController,
-              ),
-
-              buildField(
-                label: 'Contraseña',
-                hint: 'Tu contraseña SSH',
-                controller: passwordController,
-                obscure: hidePassword,
-                suffix: IconButton(
-                  icon: Icon(
-                    hidePassword
-                        ? Icons.visibility
-                        : Icons.visibility_off,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('CUSTOM SETUP'),
+                  subtitle: const Text(
+                    'Mostrar opciones de configuración',
+                    style: TextStyle(color: Colors.white60),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      hidePassword = !hidePassword;
-                    });
+                  value: customSetup,
+                  activeColor: blue,
+                  onChanged: (value) {
+                    setState(() => customSetup = value);
                   },
                 ),
               ),
 
-              buildField(
-                label: 'Payload (opcional)',
-                hint: 'Introduce tu payload',
-                controller: payloadController,
-              ),
-            ] else ...[
-              const Text(
-                'CONFIGURACIÓN',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.lightBlueAccent,
+              if (customSetup) ...[
+                sectionTitle('MODO DE CONEXIÓN'),
+                modeTile(
+                  'Direct Connection',
+                  Icons.public,
                 ),
-              ),
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: configController,
-                minLines: 7,
-                maxLines: 12,
-                decoration: InputDecoration(
-                  hintText: 'Pega aquí tu configuración...',
-                  filled: true,
-                  fillColor: const Color(0xFF142238),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                modeTile(
+                  'Custom Payload',
+                  Icons.code,
                 ),
-              ),
-            ],
-
-            const SizedBox(height: 10),
-
-            SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: analyzing ? null : analyzeConfig,
-                icon: analyzing
-                    ? const SizedBox(
-                        width: 19,
-                        height: 19,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.analytics),
-                label: Text(
-                  analyzing
-                      ? 'Analizando...'
-                      : 'Analizar configuración',
+                modeTile(
+                  'Custom Host Header',
+                  Icons.http,
                 ),
-              ),
-            ),
-
-            if (selectedProtocol == 'SSH') ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: connectingSsh ? null : connectSsh,
-                  icon: connectingSsh
-                      ? const SizedBox(
-                          width: 19,
-                          height: 19,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.vpn_key),
-                  label: Text(
-                    connectingSsh
-                        ? 'Conectando SSH...'
-                        : 'Conectar SSH',
-                  ),
+                modeTile(
+                  'Custom SNI',
+                  Icons.security,
                 ),
-              ),
-            ],
+                modeTile(
+                  'DNSTT Tunnel',
+                  Icons.dns,
+                ),
+                modeTile(
+                  'Imported Config',
+                  Icons.file_open,
+                ),
 
-            const SizedBox(height: 22),
+                sectionTitle('CONFIGURACIÓN DEL MODO'),
 
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF142238),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(
-                        Icons.terminal,
-                        color: Colors.lightBlueAccent,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Resultado del análisis',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SelectableText(
-                    result,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                    ),
+                if (selectedMode == 'Direct Connection') ...[
+                  const Text(
+                    'Conexión directa a Internet. '
+                    'El motor de conexión todavía no está instalado.',
+                    style: TextStyle(color: Colors.white70),
                   ),
                 ],
+
+                if (selectedMode == 'Custom Payload')
+                  buildField(
+                    label: 'Payload',
+                    hint: 'Introduce tu payload',
+                    controller: payloadController,
+                  ),
+
+                if (selectedMode == 'Custom Host Header')
+                  buildField(
+                    label: 'Host Header',
+                    hint: 'www.ejemplo.com',
+                    controller: hostHeaderController,
+                  ),
+
+                if (selectedMode == 'Custom SNI') ...[
+                  buildField(
+                    label: 'SNI',
+                    hint: 'servidor.ejemplo.com',
+                    controller: sniController,
+                  ),
+                  buildField(
+                    label: 'Nombre del servidor',
+                    hint: 'Nombre TLS del servidor',
+                    controller: serverNameController,
+                  ),
+                ],
+
+                if (selectedMode == 'DNSTT Tunnel')
+                  buildField(
+                    label: 'Dominio DNSTT',
+                    hint: 'tunel.ejemplo.com',
+                    controller: serverNameController,
+                  ),
+
+                if (selectedMode == 'Imported Config') ...[
+                  DropdownButtonFormField<String>(
+                    value: selectedProtocol,
+                    decoration: InputDecoration(
+                      labelText: 'Protocolo',
+                      filled: true,
+                      fillColor: panel,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: protocols.map((protocol) {
+                      return DropdownMenuItem<String>(
+                        value: protocol,
+                        child: Text(protocol),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          selectedProtocol = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  if (selectedProtocol == 'SSH') ...[
+                    buildField(
+                      label: 'Usuario SSH',
+                      hint: 'Tu usuario',
+                      controller: usernameController,
+                    ),
+                    buildField(
+                      label: 'Contraseña SSH',
+                      hint: 'Tu contraseña',
+                      controller: passwordController,
+                      obscure: hidePassword,
+                      suffix: IconButton(
+                        icon: Icon(
+                          hidePassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            hidePassword = !hidePassword;
+                          });
+                        },
+                      ),
+                    ),
+                    buildField(
+                      label: 'Payload (opcional)',
+                      hint: 'Introduce tu payload',
+                      controller: payloadController,
+                    ),
+                  ] else
+                    TextField(
+                      controller: configController,
+                      minLines: 6,
+                      maxLines: 10,
+                      decoration: InputDecoration(
+                        labelText: 'Configuración importada',
+                        hintText: 'Pega aquí tu configuración...',
+                        filled: true,
+                        fillColor: panel,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 50,
+                    child: FilledButton.icon(
+                      onPressed: analyzing ? null : analyzeConfig,
+                      icon: analyzing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.analytics),
+                      label: Text(
+                        analyzing
+                            ? 'Analizando...'
+                            : 'Analizar configuración',
+                      ),
+                    ),
+                  ),
+
+                  if (selectedProtocol == 'SSH') ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            connectingSsh ? null : connectSsh,
+                        icon: connectingSsh
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.vpn_key),
+                        label: Text(
+                          connectingSsh
+                              ? 'Conectando SSH...'
+                              : 'Probar acceso SSH',
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ],
+
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: blue),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Tráfico: disponible cuando se instale '
+                        'un motor VPN compatible.',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ] else ...[
+              const SizedBox(height: 18),
+              const Text(
+                'REGISTRO DE ACTIVIDAD',
+                style: TextStyle(
+                  color: blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: SelectableText(
+                  result,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
 
-            const SizedBox(height: 18),
-
+            const SizedBox(height: 20),
             const Center(
               child: Text(
                 'Mi Tunnel • Motor VPN en desarrollo',
@@ -586,5 +775,6 @@ Payload: ${payloadController.text.trim().isNotEmpty ? 'configured' : ''}
       ),
     );
   }
+
 }
 
