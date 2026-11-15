@@ -1,4 +1,3 @@
-
 name: Construir APK Mi Tunnel
 
 on:
@@ -29,22 +28,54 @@ jobs:
       - name: Preparar proyecto Android
         working-directory: mi_tunnel_app
         run: flutter create --platforms=android --project-name mi_tunnel .
+
       - name: Permitir acceso a Internet
         working-directory: mi_tunnel_app
         run: |
           sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+
       - name: Descargar dependencias
         working-directory: mi_tunnel_app
         run: flutter pub get
+
       - name: Configurar Android API 36
         working-directory: mi_tunnel_app
         run: |
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
-          elif [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
-          fi
-          grep -n "compileSdk" android/app/build.gradle*
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          patterns = [
+              Path("android/app").glob("build.gradle*"),
+              Path.home().glob(".pub-cache/hosted/pub.dev/file_picker-*/android/build.gradle*"),
+              Path.home().glob(".pub-cache/hosted/pub.dev/flutter_plugin_android_lifecycle-*/android/build.gradle*"),
+          ]
+
+          files = [p for group in patterns for p in group]
+          if not files:
+              raise SystemExit("No se encontraron archivos Gradle")
+
+          for path in files:
+              content = path.read_text()
+              content, a = re.subn(
+                  r'(?m)^(\s*)compileSdk\s*=\s*.*$',
+                  r'\1compileSdk = 36',
+                  content
+              )
+              content, b = re.subn(
+                  r'(?m)^(\s*)compileSdkVersion\s*(?:=\s*)?.*$',
+                  r'\1compileSdkVersion 36',
+                  content
+              )
+              if a + b:
+                  path.write_text(content)
+                  print(f"API 36 configurada: {path}")
+
+          app_files = list(Path("android/app").glob("build.gradle*"))
+          if not any("compileSdk = 36" in p.read_text() or "compileSdkVersion 36" in p.read_text() for p in app_files):
+              raise SystemExit("ERROR: no se pudo configurar API 36 en la aplicación")
+          PY
+
       - name: Compilar APK
         working-directory: mi_tunnel_app
         run: flutter build apk --release
@@ -55,5 +86,3 @@ jobs:
           name: Mi-Tunnel-APK
           path: mi_tunnel_app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 7
-
-
