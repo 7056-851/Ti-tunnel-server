@@ -9,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Descargar proyecto
         uses: actions/checkout@v4
@@ -18,7 +17,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
 
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
@@ -31,8 +30,7 @@ jobs:
 
       - name: Permitir acceso a Internet
         working-directory: mi_tunnel_app
-        run: |
-          sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
+        run: sed -i '/<application/i\    <uses-permission android:name=\"android.permission.INTERNET\" />' android/app/src/main/AndroidManifest.xml
 
       - name: Descargar dependencias
         working-directory: mi_tunnel_app
@@ -42,38 +40,37 @@ jobs:
         working-directory: mi_tunnel_app
         run: |
           python3 - <<'PY'
-          from pathlib import Path
+          import json
           import re
-
-          patterns = [
-              Path("android/app").glob("build.gradle*"),
-              Path.home().glob(".pub-cache/hosted/pub.dev/file_picker-*/android/build.gradle*"),
-              Path.home().glob(".pub-cache/hosted/pub.dev/flutter_plugin_android_lifecycle-*/android/build.gradle*"),
-          ]
-
-          files = [p for group in patterns for p in group]
-          if not files:
-              raise SystemExit("No se encontraron archivos Gradle")
-
-          for path in files:
-              content = path.read_text()
-              content, a = re.subn(
-                  r'(?m)^(\s*)compileSdk\s*=\s*.*$',
-                  r'\1compileSdk = 36',
-                  content
-              )
-              content, b = re.subn(
-                  r'(?m)^(\s*)compileSdkVersion\s*(?:=\s*)?.*$',
-                  r'\1compileSdkVersion 36',
-                  content
-              )
-              if a + b:
-                  path.write_text(content)
-                  print(f"API 36 configurada: {path}")
-
-          app_files = list(Path("android/app").glob("build.gradle*"))
-          if not any("compileSdk = 36" in p.read_text() or "compileSdkVersion 36" in p.read_text() for p in app_files):
-              raise SystemExit("ERROR: no se pudo configurar API 36 en la aplicación")
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+          config_path = Path(".dart_tool/package_config.json")
+          config = json.loads(config_path.read_text())
+          app = Path("android/app/build.gradle.kts")
+          if not app.exists():
+              app = Path("android/app/build.gradle")
+          targets = [app]
+          wanted = {"file_picker", "file_picker_android", "flutter_plugin_android_lifecycle"}
+          for package in config["packages"]:
+              if package["name"] not in wanted:
+                  continue
+              uri = package["rootUri"]
+              if uri.startswith("file:"):
+                  root = Path(unquote(urlparse(uri).path))
+              else:
+                  root = (config_path.parent / unquote(uri)).resolve()
+              for filename in ("build.gradle", "build.gradle.kts"):
+                  candidate = root / "android" / filename
+                  if candidate.exists():
+                      targets.append(candidate)
+          for path in targets:
+              source = path.read_text()
+              value = "compileSdk = 36" if path.suffix == ".kts" else "compileSdkVersion 36"
+              updated, count = re.subn(r"(?m)^(\s*)compileSdk(?:Version)?\s*(?:=\s*)?.*$", lambda m: m.group(1) + value, source)
+              if count == 0:
+                  raise SystemExit("No se encontró compileSdk en " + str(path))
+              path.write_text(updated)
+              print("API 36 configurada:", path)
           PY
 
       - name: Compilar APK
