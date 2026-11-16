@@ -299,6 +299,27 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
     }
   }
 
+  Future<void> disconnectSsh() async {
+    final client = sshClient;
+    if (client == null) return;
+
+    setState(() {
+      sshClient = null;
+      result = "Cerrando conexión SSH...";
+    });
+
+    try {
+      await client.close();
+      if (!mounted) return;
+      setState(() => result = "Conexión SSH cerrada. Estado: desconectado");
+      _addLog("Conexión SSH cerrada.");
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => result = "Error al cerrar SSH: $e");
+      _addLog("Error al desconectar SSH: $e");
+    }
+  }
+
   Future<void> importConfig() async {
     try {
       final picked = await FilePicker.platform.pickFiles(
@@ -467,6 +488,8 @@ class _TunnelHomePageState extends State<TunnelHomePage> {
               icon: connectingSsh ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.vpn_key_outlined),
               label: Text(connectingSsh ? 'Conectando SSH...' : 'Probar acceso SSH'),
             )),
+            const SizedBox(height: 9),
+            SizedBox(height: 48, child: OutlinedButton.icon(onPressed: sshClient == null || connectingSsh ? null : disconnectSsh, icon: const Icon(Icons.link_off), label: const Text("Desconectar SSH"))),
           ],
         ]);
       default:
